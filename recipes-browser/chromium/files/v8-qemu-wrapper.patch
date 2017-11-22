@@ -1,4 +1,4 @@
-Upstream-Status: Inappropriate [embedder specific]
+Upstream-Status: Inappropriate [embedded specific]
 
 The patch below makes the V8 binaries run during the build be invoked through
 QEMU, as they are built for the target.
