@@ -16,7 +16,6 @@ SRC_URI += "\
 REQUIRED_DISTRO_FEATURES = "x11"
 
 DEPENDS += "\
-        gtk+3 \
         libx11 \
         libxcomposite \
         libxcursor \

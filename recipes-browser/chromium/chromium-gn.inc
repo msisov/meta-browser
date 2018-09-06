@@ -27,6 +27,7 @@ DEPENDS += " \
     glib-2.0 \
     gn-native \
     gperf-native \
+    gtk+3 \
     jpeg \
     libdrm \
     libwebp \
@@ -311,7 +312,7 @@ do_configure() {
 }
 
 do_compile() {
-	ninja -v ${PARALLEL_MAKE} chrome chrome_sandbox chromedriver
+	ninja -v ${PARALLEL_MAKE} chrome chrome_sandbox chromedriver minidump_stackwalk
 }
 do_compile[progress] = "outof:^\[(\d+)/(\d+)\]\s+"
 
