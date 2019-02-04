@@ -3,6 +3,11 @@ require chromium-gn.inc
 
 REQUIRED_DISTRO_FEATURES = "x11"
 
+SRC_URI += " \
+        file://0001-google_util-Explicitly-use-std-initializer_list-with.patch \
+        file://0001-Update-asserts-in-mojo-about-int64_t-s-alignment.patch \
+"
+
 DEPENDS += "\
         libx11 \
         libxcomposite \
