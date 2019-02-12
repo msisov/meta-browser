@@ -18,8 +18,6 @@ SRC_URI += " \
         file://wrapper-extra-flags.patch \
 "
 
-
-
 # This patch could be enabled for clang builds, one just needs to make it work.
 # On sumo and MACHINE="raspberrypi3", the build fails with errors such as
 #   /tmp/crc32_simd-01be44.s:86: Error: selected processor does not support `crc32b r0,r0,r5' in Thumb mode
