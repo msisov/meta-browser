@@ -1,0 +1,29 @@
+From bec829042e14cfb513d185a1ce99b1af6b3b1485 Mon Sep 17 00:00:00 2001
+From: Maksim Sisov <msisov@igalia.com>
+Date: Wed, 13 Feb 2019 09:51:05 +0200
+Subject: [PATCH] AGL Renesas R-car M3 define GBM_BO_USE_LINEAR
+
+Signed-off-by: Maksim Sisov <msisov@igalia.com>
+Change-Id: I568df840d4902c9b887e75b8b6cd7cfa24b40ef2
+---
+ ui/ozone/platform/wayland/gpu/gbm_pixmap_wayland.cc | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/ui/ozone/platform/wayland/gpu/gbm_pixmap_wayland.cc b/ui/ozone/platform/wayland/gpu/gbm_pixmap_wayland.cc
+index 62d42fcc06f2..a0c039774a7a 100644
+--- a/ui/ozone/platform/wayland/gpu/gbm_pixmap_wayland.cc
++++ b/ui/ozone/platform/wayland/gpu/gbm_pixmap_wayland.cc
+@@ -24,6 +24,10 @@
+ #include "ui/ozone/public/overlay_plane.h"
+ #include "ui/ozone/public/ozone_platform.h"
+ 
++#if !defined(GBM_BO_USE_LINEAR)
++#define GBM_BO_USE_LINEAR (1 << 4)
++#endif
++
+ namespace ui {
+ 
+ GbmPixmapWayland::GbmPixmapWayland(WaylandSurfaceFactory* surface_manager,
+-- 
+2.17.1
+

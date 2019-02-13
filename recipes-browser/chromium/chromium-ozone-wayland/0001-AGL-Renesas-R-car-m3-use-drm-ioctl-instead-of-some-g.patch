@@ -1,0 +1,164 @@
+From b288e9ca89cc859cedcfafd970c416d3bbae0180 Mon Sep 17 00:00:00 2001
+From: Maksim Sisov <msisov@igalia.com>
+Date: Wed, 13 Feb 2019 09:36:42 +0200
+Subject: [PATCH] AGL Renesas R-car m3: use drm ioctl instead of some gbm apis
+
+Currently, R-car m3 has outdated libgbm and unable to provide
+needed APIs. Thus, switch to drm ioctls and add checks that only single
+plane buffers are used.
+
+Signed-off-by: Maksim Sisov <msisov@igalia.com>
+---
+ ui/ozone/common/linux/gbm_wrapper.cc | 41 +++++++++++++++++++++++++++---------
+ 1 file changed, 31 insertions(+), 10 deletions(-)
+
+diff --git a/ui/ozone/common/linux/gbm_wrapper.cc b/ui/ozone/common/linux/gbm_wrapper.cc
+index fdf5aa62aa..cb92d5437f 100644
+--- a/ui/ozone/common/linux/gbm_wrapper.cc
++++ b/ui/ozone/common/linux/gbm_wrapper.cc
+@@ -28,9 +28,6 @@ int GetPlaneFdForBo(gbm_bo* bo, size_t plane) {
+ #if defined(MINIGBM)
+   return gbm_bo_get_plane_fd(bo, plane);
+ #else
+-  const int plane_count = gbm_bo_get_plane_count(bo);
+-  DCHECK(plane_count > 0 && plane < static_cast<size_t>(plane_count));
+-
+   // System linux gbm (or Mesa gbm) does not provide fds per plane basis. Thus,
+   // get plane handle and use drm ioctl to get a prime fd out of it avoid having
+   // two different branches for minigbm and Mesa gbm here.
+@@ -38,7 +35,7 @@ int GetPlaneFdForBo(gbm_bo* bo, size_t plane) {
+   int dev_fd = gbm_device_get_fd(gbm_dev);
+   DCHECK_GE(dev_fd, 0);
+ 
+-  const uint32_t plane_handle = gbm_bo_get_handle_for_plane(bo, plane).u32;
++  const uint32_t plane_handle = gbm_bo_get_handle(bo).u32;
+   int fd = -1;
+   int ret;
+   // Use DRM_RDWR to allow the fd to be mappable in another process.
+@@ -62,7 +59,7 @@ size_t GetSizeOfPlane(gbm_bo* bo, size_t plane) {
+   // Mesa gbm here.
+   //
+   // TODO(msisov): Handle subsampled formats
+-  return gbm_bo_get_height(bo) * gbm_bo_get_stride_for_plane(bo, plane);
++  return gbm_bo_get_height(bo) * gbm_bo_get_stride(bo);
+ #endif
+ }
+ 
+@@ -129,7 +126,7 @@ class Buffer final : public ui::GbmBuffer {
+   }
+   uint32_t GetPlaneHandle(size_t plane) const override {
+     DCHECK_LT(plane, planes_.size());
+-    return gbm_bo_get_handle_for_plane(bo_, plane).u32;
++    return gbm_bo_get_handle(bo_).u32;
+   }
+   uint32_t GetHandle() const override { return gbm_bo_get_handle(bo_).u32; }
+   gfx::NativePixmapHandle ExportHandle() const override {
+@@ -155,6 +152,7 @@ class Buffer final : public ui::GbmBuffer {
+   }
+ 
+   sk_sp<SkSurface> GetSurface() override {
++#if defined(OS_CHROMEOS)
+     DCHECK(!mmap_data_);
+     uint32_t stride;
+     void* addr;
+@@ -173,6 +171,10 @@ class Buffer final : public ui::GbmBuffer {
+         SkImageInfo::MakeN32Premul(size_.width(), size_.height());
+     return SkSurface::MakeRasterDirectReleaseProc(info, addr, stride,
+                                                   &Buffer::UnmapGbmBo, this);
++#else
++    NOTIMPLEMENTED();
++    return nullptr;
++#endif
+   }
+ 
+  private:
+@@ -190,9 +192,13 @@ class Buffer final : public ui::GbmBuffer {
+   std::vector<gfx::NativePixmapPlane> planes_;
+ 
+   static void UnmapGbmBo(void* pixels, void* context) {
++#if defined(OS_CHROMEOS)
+     Buffer* buffer = static_cast<Buffer*>(context);
+     gbm_bo_unmap(buffer->bo_, buffer->mmap_data_);
+     buffer->mmap_data_ = nullptr;
++#else
++    NOTIMPLEMENTED();
++#endif
+   }
+ 
+   DISALLOW_COPY_AND_ASSIGN(Buffer);
+@@ -206,14 +212,19 @@ std::unique_ptr<Buffer> CreateBufferForBO(struct gbm_bo* bo,
+   std::vector<base::ScopedFD> fds;
+   std::vector<gfx::NativePixmapPlane> planes;
+ 
+-  const uint64_t modifier = gbm_bo_get_modifier(bo);
+-  const int plane_count = gbm_bo_get_plane_count(bo);
++  const uint64_t modifier = 0;
++  const gfx::BufferFormat buffer_format = ui::GetBufferFormatFromFourCCFormat(format);
++  const int plane_count = gfx::NumberOfPlanesForBufferFormat(buffer_format);
++
+   // The Mesa's gbm implementation explicitly checks whether plane count <= and
+   // returns 1 if the condition is true. Nevertheless, use a DCHECK here to make
+   // sure the condition is not broken there.
+   DCHECK_GT(plane_count, 0);
+   // Ensure there are no differences in integer signs by casting any possible
+   // values to size_t.
++
++  // Renesas R-car M3: only single plane formats are supported at the moment.
++  CHECK(plane_count == 1) << "only single plane formats are supported at the moment";
+   for (size_t i = 0; i < static_cast<size_t>(plane_count); ++i) {
+     // The fd returned by gbm_bo_get_fd is not ref-counted and need to be
+     // kept open for the lifetime of the buffer.
+@@ -230,10 +241,11 @@ std::unique_ptr<Buffer> CreateBufferForBO(struct gbm_bo* bo,
+       fds.emplace_back(std::move(fd));
+     }
+ 
+-    planes.emplace_back(gbm_bo_get_stride_for_plane(bo, i),
+-                        gbm_bo_get_offset(bo, i), GetSizeOfPlane(bo, i),
++    planes.emplace_back(gbm_bo_get_stride(bo),
++                        0, GetSizeOfPlane(bo, i),
+                         modifier);
+   }
++  CHECK(planes.size() == 1);
+   return std::make_unique<Buffer>(bo, format, flags, modifier, std::move(fds),
+                                   size, std::move(planes));
+ }
+@@ -259,6 +271,7 @@ class Device final : public ui::GbmDevice {
+       const gfx::Size& size,
+       uint32_t flags,
+       const std::vector<uint64_t>& modifiers) override {
++#if defined(OS_CHROMEOS)
+     if (modifiers.empty())
+       return CreateBuffer(format, size, flags);
+     struct gbm_bo* bo = gbm_bo_create_with_modifiers(
+@@ -268,6 +281,9 @@ class Device final : public ui::GbmDevice {
+       return nullptr;
+ 
+     return CreateBufferForBO(bo, format, size, flags);
++#else
++    NOTIMPLEMENTED();
++#endif
+   }
+ 
+   std::unique_ptr<ui::GbmBuffer> CreateBufferFromFds(
+@@ -275,6 +291,7 @@ class Device final : public ui::GbmDevice {
+       const gfx::Size& size,
+       std::vector<base::ScopedFD> fds,
+       const std::vector<gfx::NativePixmapPlane>& planes) override {
++#if defined(OS_CHROMEOS)
+     DCHECK_LE(fds.size(), planes.size());
+     DCHECK_EQ(planes[0].offset, 0);
+ 
+@@ -329,6 +346,10 @@ class Device final : public ui::GbmDevice {
+ 
+     return std::make_unique<Buffer>(bo, format, gbm_flags, planes[0].modifier,
+                                     std::move(fds), size, std::move(planes));
++#else
++    NOTIMPLEMENTED();
++    return nullptr;
++#endif
+   }
+ 
+  private:
+-- 
+2.11.0
+
