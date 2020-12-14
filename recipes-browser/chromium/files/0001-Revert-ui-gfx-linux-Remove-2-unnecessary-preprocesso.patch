@@ -1,6 +1,6 @@
-Upstream-Status: Pending
+Upstream-Status: Inappropriate
 
-System libdrm doesn't define DRM_FORMAT_INVALID and DRM_FORMAT_010.
+Old system libdrm doesn't define DRM_FORMAT_INVALID and DRM_FORMAT_010.
 
 Signed-off-by: Maksim Sisov <msisov@igalia.com>
 ---
